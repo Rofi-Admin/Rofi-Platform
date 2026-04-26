@@ -50,12 +50,15 @@ init_db()
 def scrape_amazon(url):
     try:
         with sync_playwright() as p:
-            # 🌟 2. غيرناه إلى True لأن السحابة ليس بها شاشة عرض 🌟
             browser = p.chromium.launch(headless=True) 
             page = browser.new_page()
             page.goto(url, timeout=60000, wait_until="domcontentloaded")
             page.evaluate("window.scrollBy(0, 3000)")
             page.wait_for_timeout(3000)
+            
+            # 📸 أمر عسكري: التقط صورة للشاشة الحالية واحفظها باسم debug.png
+            page.screenshot(path="debug.png")
+            
             reviews = page.locator("span[data-hook='review-body']").all_inner_texts()
             browser.close()
             return reviews if reviews else "No_Reviews"
@@ -136,11 +139,15 @@ if page == "الرئيسية (المحلل)":
                 st.markdown(report)
             elif data == "No_Reviews":
                 status.update(label="⚠️ لم نجد تعليقات", state="error")
-                st.warning("المتصفح فتح الصفحة، لكن لم يعثر على التعليقات. قد تكون مخفية أو أن المنتج بلا تقييمات.")
+                st.warning("المتصفح فتح الصفحة، لكن لم يعثر على التعليقات. انظر للصورة الاستخباراتية أدناه لمعرفة السبب:")
+                
+                # هذا هو الكود الجديد الذي سيعرض الصورة إذا وجدها
+                if os.path.exists("debug.png"):
+                    st.image("debug.png", caption="📸 صورة حية لما يراه الروبوت داخل السحابة!")
+            
             else:
                 status.update(label="❌ فشل السحب", state="error")
                 st.error(data)
-
 elif page == "تاريخ التقارير":
     st.title("📂 أرشيف تقاريرك الدائم")
     saved_reports = get_all_reports()
