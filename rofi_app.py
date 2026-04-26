@@ -28,6 +28,8 @@ def apply_custom_theme():
         .stButton>button:hover { background-color: white; color: #0c1a3c; }
         .report-card { background-color: white; color: #333; padding: 20px; border-radius: 10px; border-right: 5px solid #f4c430; margin-top: 20px; margin-bottom: 20px; }
         .report-card h1, .report-card h2, .report-card h3, .report-card p, .report-card li { color: #333 !important; }
+        /* تصميم صندوق الإحصائيات */
+        div[data-testid="metric-container"] { background-color: rgba(244, 196, 48, 0.1); border: 1px solid #f4c430; border-radius: 10px; padding: 10px; text-align: center; }
         </style>
     """, unsafe_allow_html=True)
 
@@ -45,18 +47,14 @@ if sys.platform == 'win32':
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
 
 # ================= 🌟 4. قواعد البيانات والأمان =================
-def hash_password(password):
-    return hashlib.sha256(password.encode()).hexdigest()
+def hash_password(password): return hashlib.sha256(password.encode()).hexdigest()
 
 def init_db():
     conn = sqlite3.connect('rofi_database.db')
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, email TEXT, password TEXT)''')
-    # تحديث الجدول القديم إذا لم يكن به خانة الإيميل
-    try:
-        c.execute("ALTER TABLE users ADD COLUMN email TEXT")
-    except:
-        pass
+    try: c.execute("ALTER TABLE users ADD COLUMN email TEXT")
+    except: pass
     c.execute('''CREATE TABLE IF NOT EXISTS user_reports (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, platform TEXT, url TEXT, report TEXT, date TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
     conn.commit()
     conn.close()
@@ -68,20 +66,16 @@ def create_user(username, email, password):
         c.execute("INSERT INTO users (username, email, password) VALUES (?, ?, ?)", (username, email, hash_password(password)))
         conn.commit()
         return True
-    except sqlite3.IntegrityError:
-        return False 
-    finally:
-        conn.close()
+    except sqlite3.IntegrityError: return False 
+    finally: conn.close()
 
 def authenticate_user(identifier, password):
     conn = sqlite3.connect('rofi_database.db')
     c = conn.cursor()
-    # الدخول بالاسم أو الإيميل
     c.execute("SELECT username, email, password FROM users WHERE username=? OR email=?", (identifier, identifier))
     result = c.fetchone()
     conn.close()
-    if result and result[2] == hash_password(password):
-        return {"username": result[0], "email": result[1]}
+    if result and result[2] == hash_password(password): return {"username": result[0], "email": result[1]}
     return None
 
 def save_report_to_db(username, platform, url, report):
@@ -105,23 +99,18 @@ init_db()
 def send_email_report(to_email, subject, body):
     sender_email = st.secrets.get("SENDER_EMAIL", "")
     sender_pass = st.secrets.get("EMAIL_PASSWORD", "")
-    
-    if not sender_email or not sender_pass:
-        return False, "لم يتم إعداد بريد المرسل في السحابة بعد، لكن العملية حفظت بنجاح."
-    
+    if not sender_email or not sender_pass: return False, "لم يتم إعداد بريد المرسل في السحابة بعد، لكن العملية حفظت بنجاح."
     try:
         msg = MIMEText(body)
         msg['Subject'] = subject
         msg['From'] = "رادار روفي <" + sender_email + ">"
         msg['To'] = to_email
-
         server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
         server.login(sender_email, sender_pass)
         server.sendmail(sender_email, [to_email], msg.as_string())
         server.quit()
         return True, "تم إرسال التقرير إلى بريدك بنجاح! 📧"
-    except Exception as e:
-        return False, f"خطأ في الإرسال: {e}"
+    except Exception as e: return False, f"خطأ في الإرسال: {e}"
 
 # ================= 🌟 6. السحب والذكاء الاصطناعي =================
 def scrape_amazon(url):
@@ -132,9 +121,7 @@ def scrape_amazon(url):
             page = context.new_page()
             page.goto(url, timeout=60000, wait_until="domcontentloaded")
             page.wait_for_timeout(3000)
-            if page.locator("text='تابع التسوق'").count() > 0:
-                page.locator("text='تابع التسوق'").click()
-                page.wait_for_timeout(4000) 
+            if page.locator("text='تابع التسوق'").count() > 0: page.locator("text='تابع التسوق'").click(); page.wait_for_timeout(4000) 
             for _ in range(6): page.keyboard.press("PageDown"); page.wait_for_timeout(1500)
             page.screenshot(path="debug.png")
             reviews = page.locator("span[data-hook='review-body']").all_inner_texts()
@@ -175,13 +162,11 @@ def analyze_reviews(reviews_list, platform_name):
             "cons": ["عيب 1", "عيب 2"],
             "advice": "نصيحة استراتيجية للتاجر"
         }}
-        ملاحظة: score هو تقييم لجودة المنتج من 0 إلى 100 بناءً على التعليقات.
         """
         response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
         raw_text = response.text.replace('```json', '').replace('```', '').strip()
         return json.loads(raw_text)
-    except Exception as e: 
-        return f"Error Formatting: {e}"
+    except Exception as e: return f"Error Formatting: {e}"
 
 def generate_report_text(report_data, platform, score):
     content = f"--- تقرير روفي الاستخباراتي ---\nالمنصة: {platform}\nمؤشر الجودة: {score}%\n\n✅ المميزات:\n"
@@ -191,7 +176,7 @@ def generate_report_text(report_data, platform, score):
     content += f"\n\n💡 نصيحة روفي:\n{report_data.get('advice', '')}"
     return content
 
-# ================= 🌟 7. واجهة تسجيل الدخول والتطبيق =================
+# ================= 🌟 7. واجهة التطبيق =================
 if "authenticated" not in st.session_state: st.session_state.authenticated = False
 if "username" not in st.session_state: st.session_state.username = None
 if "user_email" not in st.session_state: st.session_state.user_email = None
@@ -215,8 +200,7 @@ if not st.session_state.authenticated:
                     st.session_state.username = user_data["username"]
                     st.session_state.user_email = user_data["email"]
                     st.rerun()
-                else:
-                    st.error("❌ بيانات الدخول غير صحيحة")
+                else: st.error("❌ بيانات الدخول غير صحيحة")
                     
         with tab2:
             reg_user = st.text_input("اختر اسم مستخدم:")
@@ -224,15 +208,12 @@ if not st.session_state.authenticated:
             reg_pass = st.text_input("اختر كلمة مرور:", type="password")
             if st.button("تسجيل الحساب"):
                 if reg_user and reg_email and reg_pass:
-                    if create_user(reg_user, reg_email, reg_pass):
-                        st.success("✅ تم إنشاء حسابك بنجاح! يمكنك تسجيل الدخول الآن.")
-                    else:
-                        st.error("⚠️ اسم المستخدم مسجل مسبقاً.")
-                else:
-                    st.warning("⚠️ يرجى تعبئة جميع الحقول.")
+                    if create_user(reg_user, reg_email, reg_pass): st.success("✅ تم إنشاء حسابك بنجاح! يمكنك تسجيل الدخول الآن.")
+                    else: st.error("⚠️ اسم المستخدم مسجل مسبقاً.")
+                else: st.warning("⚠️ يرجى تعبئة جميع الحقول.")
     st.stop()
 
-# --- واجهة المنصة ---
+# --- القائمة الجانبية ---
 if os.path.exists("logo.png"): st.sidebar.image("logo.png", width=100)
 st.sidebar.markdown(f"👤 مرحباً: **{st.session_state.username}**")
 if st.sidebar.button("خروج 🚪"):
@@ -240,7 +221,7 @@ if st.sidebar.button("خروج 🚪"):
     st.rerun()
     
 st.sidebar.markdown("---")
-page = st.sidebar.radio("انتقل إلى:", ["🚀 محرك التحليل السحابي", "📂 أرشيفك وتقاريرك"])
+page = st.sidebar.radio("انتقل إلى:", ["🚀 محرك التحليل السحابي", "📊 أرشيفك وإحصائياتك"])
 
 if page == "🚀 محرك التحليل السحابي":
     st.markdown('<h1 class="main-title">🚀 محرك روفي للتحليل الذكي</h1>', unsafe_allow_html=True)
@@ -261,14 +242,7 @@ if page == "🚀 محرك التحليل السحابي":
                     if isinstance(report_data, dict):
                         st.markdown('<h2 style="text-align: center; color: #f4c430;">📊 لوحة التحليل</h2>', unsafe_allow_html=True)
                         score = report_data.get("score", 0)
-                        
-                        # 🚨 التنبيه الذكي (Smart Alert) 🚨
-                        if score < 50:
-                            st.error(f"🚨 تحذير استراتيجي: مؤشر الجودة خطير جداً ({score}%). لا يُنصح باستيراد هذا المنتج!")
-                            # إرسال إيميل تحذيري تلقائي
-                            if st.session_state.user_email:
-                                alert_body = f"تحذير من روفي!\nلقد قمت بتحليل منتج وحصل على تقييم كارثي {score}%.\nالرابط: {url}\nنرجو الحذر!"
-                                send_email_report(st.session_state.user_email, "🚨 تحذير: منتج رديء الجودة", alert_body)
+                        if score < 50: st.error(f"🚨 تحذير استراتيجي: مؤشر الجودة خطير جداً ({score}%). لا يُنصح باستيراد هذا المنتج!")
                         
                         col1, col2, col3 = st.columns([1, 2, 1])
                         with col2:
@@ -283,15 +257,7 @@ if page == "🚀 محرك التحليل السحابي":
                             st.error("❌ العيوب")
                             for c in report_data.get("cons", []): st.write(f"• {c}")
                         st.info("💡 نصيحة روفي"); st.write(report_data.get("advice", ""))
-                        
-                        # زر إرسال التقرير للإيميل
-                        if st.button("📧 إرسال التقرير إلى بريدي الإلكتروني"):
-                            email_body = generate_report_text(report_data, target_platform, score)
-                            success, msg = send_email_report(st.session_state.user_email, f"تقرير روفي - {target_platform}", email_body)
-                            if success: st.success(msg)
-                            else: st.warning(msg)
-                    else:
-                        st.write(report_data)
+                    else: st.write(report_data)
                 elif data == "No_Reviews":
                     status.update(label="⚠️ عائق تقني", state="error")
                     st.warning("لم نجد تعليقات.")
@@ -299,18 +265,46 @@ if page == "🚀 محرك التحليل السحابي":
                     status.update(label="❌ فشل الرادار", state="error")
                     st.error(data)
 
-elif page == "📂 أرشيفك وتقاريرك":
-    st.markdown('<h1 class="main-title">📂 خزينتك السرية</h1>', unsafe_allow_html=True)
+elif page == "📊 أرشيفك وإحصائياتك":
+    st.markdown('<h1 class="main-title">📊 خزينتك السرية وإحصائياتك</h1>', unsafe_allow_html=True)
     saved_reports = get_all_reports(st.session_state.username)
+    
     if saved_reports:
-        for idx, (rep_platform, rep_url, rep_text, rep_date) in enumerate(saved_reports):
+        # --- 🌟 ميزة SaaS 1: إحصائيات التاجر الذكية ---
+        total_analyzed = len(saved_reports)
+        scores = []
+        amazon_count = 0
+        for rep in saved_reports:
+            if "أمازون" in rep[0]: amazon_count += 1
+            try:
+                data = ast.literal_eval(rep[2])
+                if isinstance(data, dict): scores.append(data.get("score", 0))
+            except: pass
+        
+        avg_score = int(sum(scores)/len(scores)) if scores else 0
+        fav_platform = "أمازون السعودية 🔵" if amazon_count >= (total_analyzed/2) else "نون السعودية 🟡"
+        
+        col_stat1, col_stat2, col_stat3 = st.columns(3)
+        col_stat1.metric("📦 إجمالي المنتجات المحللة", f"{total_analyzed}")
+        col_stat2.metric("📈 متوسط جودة السوق", f"{avg_score}%")
+        col_stat3.metric("🛒 المنصة الأكثر تحليلاً", fav_platform)
+        st.markdown("---")
+        
+        # --- 🌟 ميزة SaaS 2: محرك البحث السريع ---
+        search_query = st.text_input("🔍 ابحث في أرشيفك (بالرابط أو المنصة):", placeholder="مثال: amazon.sa أو نون...")
+        filtered_reports = [rep for rep in saved_reports if search_query.lower() in rep[1].lower() or search_query.lower() in rep[0].lower()]
+        
+        if search_query and not filtered_reports:
+            st.warning("لم نجد أي منتج يطابق بحثك.")
+            
+        for idx, (rep_platform, rep_url, rep_text, rep_date) in enumerate(filtered_reports):
             with st.expander(f"📅 {rep_date} | {rep_platform}"):
                 st.write(f"**الرابط:** {rep_url}")
                 try:
                     report_data = ast.literal_eval(rep_text)
                     if isinstance(report_data, dict):
                         score = report_data.get("score", 0)
-                        st.metric(label="مؤشر جودة المنتج", value=f"{score}%")
+                        st.metric(label="مؤشر الجودة", value=f"{score}%")
                         col_pros, col_cons = st.columns(2)
                         with col_pros:
                             st.success("✅ المميزات")
@@ -320,16 +314,10 @@ elif page == "📂 أرشيفك وتقاريرك":
                             for c in report_data.get("cons", []): st.write(f"• {c}")
                         
                         download_content = generate_report_text(report_data, rep_platform, score)
-                        
-                        col_btn1, col_btn2 = st.columns(2)
-                        with col_btn1:
-                            st.download_button("📥 تحميل (Text)", data=download_content, file_name=f"Rofi_{idx}.txt")
-                        with col_btn2:
-                            if st.button("📧 إرسال للإيميل", key=f"email_{idx}"):
-                                success, msg = send_email_report(st.session_state.user_email, f"أرشيف روفي - {rep_platform}", download_content)
-                                if success: st.success(msg)
-                                else: st.warning(msg)
-                except:
-                    st.write(rep_text)
+                        st.download_button("📥 تحميل التقرير", data=download_content, file_name=f"Rofi_{idx}.txt")
+                except: st.write(rep_text)
     else:
         st.write("أرشيفك فارغ.")
+
+st.sidebar.markdown("---")
+st.sidebar.markdown('<p style="text-align: center; color: rgba(255,255,255,0.5);">منصة روفي © 2026</p>', unsafe_allow_html=True)
