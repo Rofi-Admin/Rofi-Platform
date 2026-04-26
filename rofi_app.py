@@ -5,13 +5,14 @@ import sqlite3
 import os
 import json
 import ast
+import hashlib
 from playwright.sync_api import sync_playwright
 from google import genai
 
 # 🌟 1. إعدادات الصفحة
 st.set_page_config(page_title="منصة روفي للتحليل الذكي | Rofi", page_icon="🚀", layout="wide")
 
-# ================= 🌟 2. الثيم البصري (نسخة نظيفة وخفيفة) =================
+# ================= 🌟 2. الثيم البصري =================
 def apply_custom_theme():
     st.markdown("""
         <style>
@@ -29,8 +30,8 @@ def apply_custom_theme():
     """, unsafe_allow_html=True)
 
 apply_custom_theme()
-# =====================================================================
 
+# ================= 🌟 3. إعدادات المتصفح وقاعدة البيانات والأمان =================
 @st.cache_resource
 def install_browsers():
     os.system("playwright install chromium")
@@ -41,33 +42,60 @@ if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
-ACCESS_PASSWORD = "Rofi2026"
+
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
 
 def init_db():
     conn = sqlite3.connect('rofi_database.db')
     c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS reports (id INTEGER PRIMARY KEY AUTOINCREMENT, platform TEXT, url TEXT, report TEXT, date TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+    # جدول المستخدمين
+    c.execute('''CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT)''')
+    # جدول التقارير الجديد (مربوط باسم المستخدم)
+    c.execute('''CREATE TABLE IF NOT EXISTS user_reports (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, platform TEXT, url TEXT, report TEXT, date TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
     conn.commit()
     conn.close()
 
-def save_report_to_db(platform, url, report):
+def create_user(username, password):
     conn = sqlite3.connect('rofi_database.db')
     c = conn.cursor()
-    c.execute("INSERT INTO reports (platform, url, report) VALUES (?, ?, ?)", (platform, url, report))
+    try:
+        c.execute("INSERT INTO users (username, password) VALUES (?, ?)", (username, hash_password(password)))
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False # اسم المستخدم موجود مسبقاً
+    finally:
+        conn.close()
+
+def authenticate_user(username, password):
+    conn = sqlite3.connect('rofi_database.db')
+    c = conn.cursor()
+    c.execute("SELECT password FROM users WHERE username=?", (username,))
+    result = c.fetchone()
+    conn.close()
+    if result and result[0] == hash_password(password):
+        return True
+    return False
+
+def save_report_to_db(username, platform, url, report):
+    conn = sqlite3.connect('rofi_database.db')
+    c = conn.cursor()
+    c.execute("INSERT INTO user_reports (username, platform, url, report) VALUES (?, ?, ?, ?)", (username, platform, url, report))
     conn.commit()
     conn.close()
 
-def get_all_reports():
+def get_all_reports(username):
     conn = sqlite3.connect('rofi_database.db')
     c = conn.cursor()
-    c.execute("SELECT platform, url, report, date FROM reports ORDER BY date DESC")
+    c.execute("SELECT platform, url, report, date FROM user_reports WHERE username=? ORDER BY date DESC", (username,))
     data = c.fetchall()
     conn.close()
     return data
 
 init_db()
 
-# --- محركات السحب ---
+# ================= 🌟 4. محركات السحب والذكاء الاصطناعي =================
 def scrape_amazon(url):
     try:
         with sync_playwright() as p:
@@ -113,7 +141,6 @@ def scrape_noon(url):
             return "No_Reviews"
     except Exception as e: return f"Error: {e}"
 
-# --- محرك الذكاء الاصطناعي (محدث لـ JSON) ---
 def analyze_reviews(reviews_list, platform_name):
     try:
         client = genai.Client(api_key=GEMINI_API_KEY)
@@ -128,7 +155,7 @@ def analyze_reviews(reviews_list, platform_name):
             "cons": ["عيب 1", "عيب 2"],
             "advice": "نصيحة استراتيجية للتاجر"
         }}
-        ملاحظة: score هو تقييم لجودة المنتج من 0 إلى 100 بناءً على التعليقات.
+        ملاحظة: score هو تقييم لجودة المنتج من 0 إلى 100.
         """
         response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
         raw_text = response.text.replace('```json', '').replace('```', '').strip()
@@ -136,27 +163,64 @@ def analyze_reviews(reviews_list, platform_name):
     except Exception as e: 
         return f"Error Formatting: {e}"
 
-# --- الواجهة الرئيسية ---
+# ================= 🌟 5. واجهة تسجيل الدخول والتطبيق =================
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+if "username" not in st.session_state:
+    st.session_state.username = None
+
+# إذا لم يكن مسجلاً للدخول، نعرض بوابة الحماية
+if not st.session_state.authenticated:
+    if os.path.exists("logo.png"):
+        col_logo1, col_logo2, col_logo3 = st.columns([2,1,2])
+        with col_logo2: st.image("logo.png", use_container_width=True)
+        
+    st.markdown('<h1 class="main-title">🔐 بوابة منصة روفي</h1>', unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns([1,2,1])
+    with col2:
+        tab1, tab2 = st.tabs(["تسجيل الدخول", "إنشاء حساب جديد"])
+        
+        with tab1:
+            log_user = st.text_input("اسم المستخدم:")
+            log_pass = st.text_input("كلمة المرور:", type="password")
+            if st.button("دخول للمحرك"):
+                if authenticate_user(log_user, log_pass):
+                    st.session_state.authenticated = True
+                    st.session_state.username = log_user
+                    st.rerun()
+                else:
+                    st.error("❌ بيانات الدخول غير صحيحة")
+                    
+        with tab2:
+            reg_user = st.text_input("اختر اسم مستخدم:")
+            reg_pass = st.text_input("اختر كلمة مرور:", type="password")
+            if st.button("تسجيل الحساب"):
+                if reg_user and reg_pass:
+                    if create_user(reg_user, reg_pass):
+                        st.success("✅ تم إنشاء حسابك بنجاح! اذهب إلى (تسجيل الدخول) للدخول للمنصة.")
+                    else:
+                        st.error("⚠️ اسم المستخدم هذا مستخدم مسبقاً، اختر اسماً آخر.")
+                else:
+                    st.warning("⚠️ يرجى تعبئة جميع الحقول.")
+    st.stop()
+
+# --- واجهة المنصة بعد تسجيل الدخول ---
 if os.path.exists("logo.png"):
-    st.sidebar.image("logo.png", width=120)
+    st.sidebar.image("logo.png", width=100)
 else:
     st.sidebar.markdown("🚀")
 
+# بيانات المستخدم في القائمة الجانبية
+st.sidebar.markdown(f"👤 مرحباً: **{st.session_state.username}**")
+if st.sidebar.button("خروج 🚪"):
+    st.session_state.authenticated = False
+    st.session_state.username = None
+    st.rerun()
+    
+st.sidebar.markdown("---")
 st.sidebar.title("رادار روفي")
-page = st.sidebar.radio("انتقل إلى:", ["🚀 محرك التحليل السحابي", "📂 أرشيف التقارير"])
-
-if not st.session_state.get("authenticated", False):
-    st.markdown('<h1 class="main-title">🔐 دخول الإدارة | روفي</h1>', unsafe_allow_html=True)
-    col1, col2, col3 = st.columns([1,2,1])
-    with col2:
-        pass_input = st.text_input("أدخل كلمة المرور السرية:", type="password")
-        if st.button("فتح محرك روفي"):
-            if pass_input == ACCESS_PASSWORD:
-                st.session_state.authenticated = True
-                st.rerun()
-            else:
-                st.error("❌ كلمة المرور غير صحيحة")
-    st.stop()
+page = st.sidebar.radio("انتقل إلى:", ["🚀 محرك التحليل السحابي", "📂 أرشيف التقارير (الخاص بك)"])
 
 if page == "🚀 محرك التحليل السحابي":
     st.markdown('<h1 class="main-title">🚀 محرك روفي للتحليل الذكي</h1>', unsafe_allow_html=True)
@@ -178,11 +242,12 @@ if page == "🚀 محرك التحليل السحابي":
                     data = scrape_noon(url)
                     
                 if isinstance(data, list):
-                    st.write("✅ نجح الاختراق وجاري قراءة التعليقات وتوليد الذكاء البشري المساعد...")
+                    st.write("✅ نجح الاختراق وجاري قراءة التعليقات...")
                     report_data = analyze_reviews(data, target_platform)
                     
-                    save_report_to_db(target_platform, url, str(report_data))
-                    status.update(label="✅ اكتملت المهمة! إليك لوحة التحليل", state="complete")
+                    # حفظ التقرير باسم المستخدم الحالي
+                    save_report_to_db(st.session_state.username, target_platform, url, str(report_data))
+                    status.update(label="✅ اكتملت المهمة!", state="complete")
                     
                     if isinstance(report_data, dict):
                         st.markdown("---")
@@ -191,54 +256,10 @@ if page == "🚀 محرك التحليل السحابي":
                         score = report_data.get("score", 0)
                         col1, col2, col3 = st.columns([1, 2, 1])
                         with col2:
-                            st.metric(label="مؤشر جودة المنتج (AI Score)", value=f"{score}%")
+                            st.metric(label="مؤشر جودة المنتج", value=f"{score}%")
                             st.progress(score / 100.0)
                         
                         st.markdown("<br>", unsafe_allow_html=True)
-                        
-                        col_pros, col_cons = st.columns(2)
-                        with col_pros:
-                            st.success("✅ أبرز المميزات")
-                            for p in report_data.get("pros", []):
-                                st.write(f"• {p}")
-                                
-                        with col_cons:
-                            st.error("❌ أبرز العيوب")
-                            for c in report_data.get("cons", []):
-                                st.write(f"• {c}")
-                        
-                        st.markdown("<br>", unsafe_allow_html=True)
-                        
-                        st.info("💡 نصيحة روفي الاستراتيجية للمنافسة")
-                        st.write(report_data.get("advice", ""))
-                        
-                    else:
-                        st.markdown(f'<div class="report-card">{report_data}</div>', unsafe_allow_html=True)
-
-                elif data == "No_Reviews":
-                    status.update(label="⚠️ عائق تقني", state="error")
-                    st.warning("أمازون/نون أظهرت صفحة حماية. انظر للصورة أدناه لما واجهه الروبوت:")
-                    if os.path.exists("debug.png"):
-                        st.image("debug.png", caption="📸 لقطة استخباراتية حية")
-                else:
-                    status.update(label="❌ فشل الرادار", state="error")
-                    st.error(data)
-
-elif page == "📂 أرشيف التقارير":
-    st.markdown('<h1 class="main-title">📂 أرشيف شركة نفطي الدائم</h1>', unsafe_allow_html=True)
-    saved_reports = get_all_reports()
-    
-    if saved_reports:
-        for idx, (rep_platform, rep_url, rep_text, rep_date) in enumerate(saved_reports):
-            with st.expander(f"📅 {rep_date} | {rep_platform}"):
-                st.write(f"**الرابط:** {rep_url}")
-                
-                try:
-                    report_data = ast.literal_eval(rep_text)
-                    if isinstance(report_data, dict):
-                        score = report_data.get("score", 0)
-                        st.metric(label="مؤشر جودة المنتج", value=f"{score}%")
-                        
                         col_pros, col_cons = st.columns(2)
                         with col_pros:
                             st.success("✅ أبرز المميزات")
@@ -246,26 +267,57 @@ elif page == "📂 أرشيف التقارير":
                         with col_cons:
                             st.error("❌ أبرز العيوب")
                             for c in report_data.get("cons", []): st.write(f"• {c}")
+                        
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        st.info("💡 نصيحة روفي الاستراتيجية للمنافسة")
+                        st.write(report_data.get("advice", ""))
+                    else:
+                        st.markdown(f'<div class="report-card">{report_data}</div>', unsafe_allow_html=True)
+
+                elif data == "No_Reviews":
+                    status.update(label="⚠️ عائق تقني", state="error")
+                    st.warning("لم نجد تعليقات. انظر للصورة أدناه:")
+                    if os.path.exists("debug.png"): st.image("debug.png")
+                else:
+                    status.update(label="❌ فشل الرادار", state="error")
+                    st.error(data)
+
+elif page == "📂 أرشيف التقارير (الخاص بك)":
+    st.markdown('<h1 class="main-title">📂 خزينتك السرية</h1>', unsafe_allow_html=True)
+    # جلب التقارير الخاصة بالمستخدم المسجل فقط
+    saved_reports = get_all_reports(st.session_state.username)
+    
+    if saved_reports:
+        for idx, (rep_platform, rep_url, rep_text, rep_date) in enumerate(saved_reports):
+            with st.expander(f"📅 {rep_date} | {rep_platform}"):
+                st.write(f"**الرابط:** {rep_url}")
+                try:
+                    report_data = ast.literal_eval(rep_text)
+                    if isinstance(report_data, dict):
+                        score = report_data.get("score", 0)
+                        st.metric(label="مؤشر جودة المنتج", value=f"{score}%")
+                        col_pros, col_cons = st.columns(2)
+                        with col_pros:
+                            st.success("✅ المميزات")
+                            for p in report_data.get("pros", []): st.write(f"• {p}")
+                        with col_cons:
+                            st.error("❌ العيوب")
+                            for c in report_data.get("cons", []): st.write(f"• {c}")
                             
                         st.info("💡 نصيحة روفي")
                         st.write(report_data.get("advice", ""))
                         
-                        download_content = f"تقرير منصة روفي\nالمنصة: {rep_platform}\nالتاريخ: {rep_date}\nمؤشر الجودة: {score}%\n\nالمميزات:\n"
+                        download_content = f"تقرير منصة روفي\nبواسطة: {st.session_state.username}\nالمنصة: {rep_platform}\nالتاريخ: {rep_date}\nمؤشر الجودة: {score}%\n\nالمميزات:\n"
                         download_content += "\n".join([f"- {p}" for p in report_data.get("pros", [])])
                         download_content += "\n\nالعيوب:\n"
                         download_content += "\n".join([f"- {c}" for c in report_data.get("cons", [])])
                         download_content += f"\n\nالنصيحة:\n{report_data.get('advice', '')}"
                         
-                        st.download_button(
-                            label="📥 تحميل التقرير (Text)",
-                            data=download_content,
-                            file_name=f"Rofi_Report_{idx}.txt",
-                            mime="text/plain"
-                        )
+                        st.download_button(label="📥 تحميل التقرير (Text)", data=download_content, file_name=f"Rofi_Report_{idx}.txt", mime="text/plain")
                 except:
                     st.markdown(f'<div class="report-card">{rep_text}</div>', unsafe_allow_html=True)
     else:
-        st.write("الأرشيف فارغ.")
+        st.write("أرشيفك فارغ حالياً. ابدأ بتحليل المنتجات لتعبئته!")
 
 st.sidebar.markdown("---")
 st.sidebar.markdown('<p style="text-align: center; color: rgba(255,255,255,0.5);">منصة روفي © 2026</p>', unsafe_allow_html=True)
