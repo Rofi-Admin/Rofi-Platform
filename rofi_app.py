@@ -231,7 +231,7 @@ if page == "🚀 محرك التحليل السحابي":
     target_platform = st.radio("اختر المنصة المستهدفة:", ["أمازون السعودية 🔵", "نون السعودية 🟡"], horizontal=True)
     url = st.text_input(f"🔗 الصق رابط منتج {target_platform} هنا:")
     
-    if st.button("ابدأ تشغيل الرادار"):
+   if st.button("ابدأ تشغيل الرادار"):
         if not url:
             st.warning("⚠️ أرجوك، ضع رابطاً ليعمل المحرك!")
         else:
@@ -245,58 +245,51 @@ if page == "🚀 محرك التحليل السحابي":
                     data = scrape_noon(url)
                     
                 if isinstance(data, list):
-                        st.write(f"✅ نجح الاختراق وجاري قراءة التعليقات وتوليد الذكاء البشري المساعد...")
-                        # نغير اسم المتغير إلى report_data لأنه سيحتوي على معلومات مفصلة وليس مجرد نص
-                        report_data = analyze_reviews(data, target_platform)
+                    st.write("✅ نجح الاختراق وجاري قراءة التعليقات وتوليد الذكاء البشري المساعد...")
+                    report_data = analyze_reviews(data, target_platform)
+                    
+                    save_report_to_db(target_platform, url, str(report_data))
+                    status.update(label="✅ اكتملت المهمة! إليك لوحة التحليل", state="complete")
+                    
+                    if isinstance(report_data, dict):
+                        st.markdown("---")
+                        st.markdown('<h2 style="text-align: center; color: #f4c430;">📊 لوحة التحليل الاستراتيجية</h2>', unsafe_allow_html=True)
                         
-                        # حفظ التقرير في الأرشيف
-                        save_report_to_db(target_platform, url, str(report_data))
-                        status.update(label="✅ اكتملت المهمة! إليك لوحة التحليل", state="complete")
+                        score = report_data.get("score", 0)
+                        col1, col2, col3 = st.columns([1, 2, 1])
+                        with col2:
+                            st.metric(label="مؤشر جودة المنتج (AI Score)", value=f"{score}%")
+                            st.progress(score / 100.0)
                         
-                        # 🌟 لوحة التحكم الاحترافية (Dashboard) 🌟
-                        if isinstance(report_data, dict):
-                            st.markdown("---")
-                            st.markdown('<h2 style="text-align: center; color: #f4c430;">📊 لوحة التحليل الاستراتيجية</h2>', unsafe_allow_html=True)
-                            
-                            # 1. عرض مؤشر الجودة بشكل بصري
-                            score = report_data.get("score", 0)
-                            col1, col2, col3 = st.columns([1, 2, 1])
-                            with col2:
-                                st.metric(label="مؤشر جودة المنتج (AI Score)", value=f"{score}%")
-                                st.progress(score / 100.0)
-                            
-                            st.markdown("<br>", unsafe_allow_html=True)
-                            
-                            # 2. عرض المميزات والعيوب في أعمدة منفصلة ومنظمة
-                            col_pros, col_cons = st.columns(2)
-                            with col_pros:
-                                st.success("✅ أبرز المميزات")
-                                for p in report_data.get("pros", []):
-                                    st.write(f"• {p}")
-                                    
-                            with col_cons:
-                                st.error("❌ أبرز العيوب")
-                                for c in report_data.get("cons", []):
-                                    st.write(f"• {c}")
-                            
-                            st.markdown("<br>", unsafe_allow_html=True)
-                            
-                            # 3. عرض النصيحة الذهبية للتاجر
-                            st.info("💡 نصيحة روفي الاستراتيجية للمنافسة")
-                            st.write(report_data.get("advice", ""))
-                            
-                        else:
-                            # في حال فشل الذكاء الاصطناعي في التنسيق، يظهر كتقرير بسيط
-                            st.markdown(f'<div class="report-card">{report_data}</div>', unsafe_allow_html=True)
-
-                    elif data == "No_Reviews":
-                        status.update(label="⚠️ عائق تقني", state="error")
-                        st.warning("أمازون/نون أظهرت صفحة حماية. انظر للصورة أدناه لما واجهه الروبوت:")
-                        if os.path.exists("debug.png"):
-                            st.image("debug.png", caption="📸 لقطة استخباراتية حية")
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        
+                        col_pros, col_cons = st.columns(2)
+                        with col_pros:
+                            st.success("✅ أبرز المميزات")
+                            for p in report_data.get("pros", []):
+                                st.write(f"• {p}")
+                                
+                        with col_cons:
+                            st.error("❌ أبرز العيوب")
+                            for c in report_data.get("cons", []):
+                                st.write(f"• {c}")
+                        
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        
+                        st.info("💡 نصيحة روفي الاستراتيجية للمنافسة")
+                        st.write(report_data.get("advice", ""))
+                        
                     else:
-                        status.update(label="❌ فشل الرادار", state="error")
-                        st.error(data)
+                        st.markdown(f'<div class="report-card">{report_data}</div>', unsafe_allow_html=True)
+
+                elif data == "No_Reviews":
+                    status.update(label="⚠️ عائق تقني", state="error")
+                    st.warning("أمازون/نون أظهرت صفحة حماية. انظر للصورة أدناه لما واجهه الروبوت:")
+                    if os.path.exists("debug.png"):
+                        st.image("debug.png", caption="📸 لقطة استخباراتية حية")
+                else:
+                    status.update(label="❌ فشل الرادار", state="error")
+                    st.error(data)
 elif page == "📂 أرشيف التقارير":
     st.markdown('<h1 class="main-title">📂 الأرشيف</h1>', unsafe_allow_html=True)
     saved_reports = get_all_reports()
