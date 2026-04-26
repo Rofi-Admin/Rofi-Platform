@@ -52,16 +52,26 @@ def scrape_amazon(url):
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True) 
             page = browser.new_page()
-            page.goto(url, timeout=60000, wait_until="domcontentloaded")
-            page.evaluate("window.scrollBy(0, 3000)")
-            page.wait_for_timeout(3000)
             
-            # 📸 أمر عسكري: التقط صورة للشاشة الحالية واحفظها باسم debug.png
+            # الدخول للصفحة
+            page.goto(url, timeout=60000, wait_until="domcontentloaded")
+            page.wait_for_timeout(3000) # انتظار 3 ثواني لتستقر الصفحة
+            
+            # 🌟 محاكاة النزول البشري البطيء (تكتيك نون) 🌟
+            for _ in range(6):
+                page.keyboard.press("PageDown")
+                page.wait_for_timeout(1500) # انتظار ثانية ونصف بين كل نزلة لتحميل التعليقات
+            
+            # التقاط صورة جديدة للتأكد من مكان وقوف الروبوت
             page.screenshot(path="debug.png")
             
+            # سحب التعليقات
             reviews = page.locator("span[data-hook='review-body']").all_inner_texts()
             browser.close()
-            return reviews if reviews else "No_Reviews"
+            
+            if len(reviews) > 0:
+                return reviews
+            return "No_Reviews"
     except Exception as e: return f"Error: {e}"
 
 def scrape_noon(url):
