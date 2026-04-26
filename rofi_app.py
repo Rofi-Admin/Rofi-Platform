@@ -2,10 +2,19 @@ import streamlit as st
 import asyncio
 import sys
 import sqlite3
+import os
 from playwright.sync_api import sync_playwright
 from google import genai
 
-# 🛡️ حل مشكلة ويندوز
+# 🌟 1. أمر عسكري للخادم: قم بتثبيت المتصفح فوراً قبل تشغيل الموقع 🌟
+@st.cache_resource
+def install_browsers():
+    os.system("playwright install chromium")
+    os.system("playwright install-deps chromium")
+
+install_browsers()
+
+# 🛡️ حل مشكلة ويندوز (باقي هنا احتياطاً)
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
@@ -38,11 +47,12 @@ def get_all_reports():
 
 init_db()
 
-# --- محركات السحب (الرادارات) ---
+# --- محركات السحب ---
 def scrape_amazon(url):
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=False) 
+            # 🌟 2. غيرناه إلى True لأن السحابة ليس بها شاشة عرض 🌟
+            browser = p.chromium.launch(headless=True) 
             page = browser.new_page()
             page.goto(url, timeout=60000, wait_until="domcontentloaded")
             page.evaluate("window.scrollBy(0, 3000)")
@@ -55,49 +65,35 @@ def scrape_amazon(url):
 def scrape_noon(url):
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=False) 
+            # 🌟 3. غيرناه إلى True هنا أيضاً 🌟
+            browser = p.chromium.launch(headless=True) 
             context = browser.new_context(
                 user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
                 viewport={'width': 1280, 'height': 800}
             )
             page = context.new_page()
-            
-            # 1. الدخول للرابط (استخدمنا try لتجاوز أي تعليق مفاجئ من الموقع)
             try:
                 page.goto(url, timeout=60000, wait_until="domcontentloaded")
             except Exception:
-                pass # إذا تأخر التحميل، تجاهل وأكمل العمل
-                
-            # ننتظر 5 ثوانٍ كاملة لكي ينهي نون كل التحديثات والـ Redirects
+                pass
             page.wait_for_timeout(5000) 
-            
-            # 2. 🌟 التكتيك الجديد: النزول باستخدام أزرار الكيبورد (Page Down) 🌟
             for _ in range(8):
-                page.keyboard.press("PageDown") # محاكاة ضغطة زر بشرية
-                page.wait_for_timeout(1500)     # استراحة ثانية ونصف بين كل ضغطة
-            
-            # 3. سحب النصوص
+                page.keyboard.press("PageDown") 
+                page.wait_for_timeout(1500)     
             raw_texts = page.locator("p, span").all_inner_texts()
             browser.close()
             
-            # 4. فلترة ذكية للنصوص المكتسبة
             cleaned_reviews = []
             for text in raw_texts:
                 t = text.strip().replace('\n', ' ')
-                # نستبعد الجمل القصيرة والكلمات التجارية
                 if 15 < len(t) < 800 and not any(word in t for word in ["ر.س", "SAR", "إضافة", "ريال", "خصم", "تسوق"]):
                     cleaned_reviews.append(t)
             
-            # إزالة النصوص المكررة
             cleaned_reviews = list(set(cleaned_reviews))
-            
             if len(cleaned_reviews) > 0:
-                print(f"✅ تم اصطياد {len(cleaned_reviews)} نص محتمل من نون.")
                 return cleaned_reviews
             return "No_Reviews"
-            
-    except Exception as e: 
-        return f"Error: {e}"
+    except Exception as e: return f"Error: {e}"
 
 def analyze_reviews(reviews_list, platform_name):
     try:
@@ -123,13 +119,11 @@ page = st.sidebar.radio("انتقل إلى:", ["الرئيسية (المحلل)"
 if page == "الرئيسية (المحلل)":
     st.title("🚀 محرك روفي للتحليل الذكي")
     
-    # 🌟 التحديث الجديد: اختيار المنصة 🌟
     target_platform = st.radio("اختر المنصة المستهدفة:", ["أمازون السعودية 🔵", "نون السعودية 🟡"], horizontal=True)
     url = st.text_input(f"🔗 رابط المنتج من {target_platform}:")
     
     if st.button("بدء التحليل"):
         with st.status(f"جاري إرسال رادار {target_platform}...") as status:
-            # توجيه الروبوت حسب اختيارك
             if "أمازون" in target_platform:
                 data = scrape_amazon(url)
             else:
