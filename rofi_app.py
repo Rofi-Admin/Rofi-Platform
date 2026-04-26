@@ -10,7 +10,6 @@ from google import genai
 @st.cache_resource
 def install_browsers():
     os.system("playwright install chromium")
-    os.system("playwright install-deps chromium")
 
 install_browsers()
 
