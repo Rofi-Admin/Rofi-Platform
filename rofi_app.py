@@ -12,7 +12,7 @@ from google import genai
 # 🌟 1. إعدادات الصفحة
 st.set_page_config(page_title="منصة روفي للتحليل الذكي | Rofi", page_icon="🚀", layout="wide")
 
-# ================= 🌟 2. الثيم البصري =================
+# ================= 🌟 2. الثيم البصري المحسن =================
 def apply_custom_theme():
     st.markdown("""
         <style>
@@ -84,23 +84,15 @@ def save_report_to_db(username, platform, url, report):
 def get_all_reports(username):
     conn = sqlite3.connect('rofi_database.db')
     c = conn.cursor()
-    # 🌟 الإصلاح: جلب التقارير الخاصة بك + التقارير القديمة التي لم يكن لها مستخدم
-    c.execute("SELECT platform, url, report, date FROM user_reports WHERE username=? OR username IS NULL ORDER BY date DESC", (username,))
+    # 🌟 استرجاع كافة التقارير (الخاصة بالمستخدم + القديمة التي لا تملك مستخدماً) لضمان عدم ضياع شيء
+    c.execute("SELECT platform, url, report, date FROM user_reports WHERE username=? OR username IS NULL OR username='' ORDER BY date DESC", (username,))
     data = c.fetchall()
     conn.close()
     return data
 
 init_db()
 
-# ================= 🌟 5. توليد الإكسل =================
-def generate_csv_data(report_data):
-    csv_content = "التصنيف,التفاصيل\n"
-    for p in report_data.get("pros", []): csv_content += f"ميزة,{p.replace(',', ' ')}\n"
-    for c in report_data.get("cons", []): csv_content += f"عيب,{c.replace(',', ' ')}\n"
-    csv_content += f"نصيحة,{report_data.get('advice', '').replace(',', ' ')}\n"
-    return csv_content.encode('utf-8-sig') 
-
-# ================= 🌟 6. السحب والذكاء الاصطناعي =================
+# ================= 🌟 5. محرك السحب والذكاء الاصطناعي (محدث لـJSON دسم) =================
 def scrape_amazon(url):
     try:
         with sync_playwright() as p:
@@ -113,144 +105,112 @@ def scrape_amazon(url):
             for _ in range(6): page.keyboard.press("PageDown"); page.wait_for_timeout(1500)
             reviews = page.locator("span[data-hook='review-body']").all_inner_texts()
             browser.close()
-            if len(reviews) > 0: return reviews
-            return "No_Reviews"
+            return reviews if len(reviews) > 0 else "No_Reviews"
     except Exception as e: return f"Error: {e}"
 
 def scrape_noon(url):
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True) 
-            context = browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64)", viewport={'width': 1280, 'height': 800})
-            page = context.new_page()
+            page = browser.new_page()
             try: page.goto(url, timeout=60000, wait_until="domcontentloaded")
             except: pass 
             page.wait_for_timeout(5000) 
             for _ in range(8): page.keyboard.press("PageDown"); page.wait_for_timeout(1500)     
             raw_texts = page.locator("p, span").all_inner_texts()
             browser.close()
-            cleaned_reviews = list(set([t.strip().replace('\n', ' ') for t in raw_texts if 15 < len(t) < 800 and not any(word in t for word in ["ر.س", "SAR", "إضافة"])]))
-            if len(cleaned_reviews) > 0: return cleaned_reviews
-            return "No_Reviews"
+            cleaned = list(set([t.strip() for t in raw_texts if 15 < len(t) < 800 and not any(w in t for w in ["ر.س", "SAR", "إضافة"])]))
+            return cleaned if len(cleaned) > 0 else "No_Reviews"
     except Exception as e: return f"Error: {e}"
 
 def analyze_reviews(reviews_list, platform_name):
     try:
         client = genai.Client(api_key=GEMINI_API_KEY)
-        prompt = f"""أنت خبير أسواق. حلل تعليقات هذا المنتج من منصة ({platform_name}). التعليقات: {' '.join(reviews_list)}
-        أريدك أن ترد عليّ *فقط* بصيغة JSON صحيحة، بدون أي نصوص إضافية:
-        {{"score": 85, "pros": ["ميزة 1"], "cons": ["عيب 1"], "advice": "نصيحة"}}"""
+        # 🌟 طلب تحليل "دسم" ومفصل لـ رأي الخبير
+        prompt = f"""أنت خبير استراتيجي في الأسواق العالمية. حلل تعليقات منتج من ({platform_name}). 
+        أريدك أن ترد بصيغة JSON حصراً تحتوي على:
+        1. score: تقييم من 100.
+        2. pros: قائمة بأبرز المميزات.
+        3. cons: قائمة بأخطر العيوب.
+        4. expert_opinion: تحليل استراتيجي مفصل وعميق جداً للتاجر (رأي الخبير) يشمل نصائح للمنافسة وتطوير المنتج.
+        
+        التعليقات: {' '.join(reviews_list)}
+        """
         response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
         raw_text = response.text.replace('```json', '').replace('```', '').strip()
         return json.loads(raw_text)
-    except Exception as e: return f"Error Formatting: {e}"
+    except Exception as e: return f"Error: {e}"
 
-# ================= 🌟 7. واجهة التطبيق =================
+# ================= 🌟 6. واجهة التطبيق =================
 if "authenticated" not in st.session_state: st.session_state.authenticated = False
-if "username" not in st.session_state: st.session_state.username = None
 
 if not st.session_state.authenticated:
-    st.markdown('<h1 class="main-title">🔐 بوابة منصة روفي</h1>', unsafe_allow_html=True)
+    st.markdown('<h1 class="main-title">🔐 دخول منصة روفي</h1>', unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
-        tab1, tab2 = st.tabs(["تسجيل الدخول", "إنشاء حساب جديد"])
+        tab1, tab2 = st.tabs(["تسجيل الدخول", "إنشاء حساب"])
         with tab1:
-            log_id = st.text_input("اسم المستخدم أو الإيميل:")
+            log_id = st.text_input("اسم المستخدم:")
             log_pass = st.text_input("كلمة المرور:", type="password")
-            if st.button("دخول للمحرك"):
-                user_data = authenticate_user(log_id, log_pass)
-                if user_data:
-                    st.session_state.authenticated = True; st.session_state.username = user_data["username"]; st.rerun()
-                else: st.error("❌ بيانات الدخول غير صحيحة")
+            if st.button("دخول"):
+                user = authenticate_user(log_id, log_pass)
+                if user: st.session_state.authenticated = True; st.session_state.username = user["username"]; st.rerun()
+                else: st.error("بيانات خاطئة")
         with tab2:
-            reg_user = st.text_input("اختر اسم مستخدم:")
-            reg_email = st.text_input("البريد الإلكتروني:")
-            reg_pass = st.text_input("اختر كلمة مرور:", type="password")
-            if st.button("تسجيل الحساب"):
-                if reg_user and reg_email and reg_pass:
-                    if create_user(reg_user, reg_email, reg_pass): st.success("✅ تم إنشاء حسابك بنجاح!")
-                    else: st.error("⚠️ اسم المستخدم مسجل مسبقاً.")
-                else: st.warning("⚠️ يرجى تعبئة جميع الحقول.")
+            reg_user = st.text_input("اسم مستخدم جديد:")
+            reg_email = st.text_input("البريد:")
+            reg_pass = st.text_input("كلمة مرور:")
+            if st.button("تسجيل"):
+                if create_user(reg_user, reg_email, reg_pass): st.success("تم التسجيل!")
     st.stop()
 
 # --- القائمة الجانبية ---
 st.sidebar.markdown(f"👤 مرحباً: **{st.session_state.username}**")
 if st.sidebar.button("خروج 🚪"): st.session_state.authenticated = False; st.rerun()
 st.sidebar.markdown("---")
-page = st.sidebar.radio("انتقل إلى:", ["🚀 محرك التحليل السحابي", "📂 الأرشيف الفولاذي"])
+page = st.sidebar.radio("انتقل إلى:", ["🚀 محرك التحليل", "📂 الأرشيف الفولاذي"])
 
-if page == "🚀 محرك التحليل السحابي":
-    st.markdown('<h1 class="main-title">🚀 محرك روفي للتحليل الذكي</h1>', unsafe_allow_html=True)
-    target_platform = st.radio("اختر المنصة:", ["أمازون السعودية 🔵", "نون السعودية 🟡"], horizontal=True)
-    url = st.text_input(f"🔗 الصق رابط منتج {target_platform}:")
+if page == "🚀 محرك التحليل":
+    st.markdown('<h1 class="main-title">🚀 رادار روفي الذكي</h1>', unsafe_allow_html=True)
+    target = st.radio("المنصة:", ["أمازون السعودية 🔵", "نون السعودية 🟡"], horizontal=True)
+    url = st.text_input("🔗 رابط المنتج:")
     
-    if st.button("ابدأ تشغيل الرادار"):
-        if not url: st.warning("⚠️ أرجوك، ضع رابطاً!")
-        else:
-            if not url.startswith("http"): url = "https://" + url
-            with st.status(f"📡 جاري الاختراق...") as status:
-                data = scrape_amazon(url) if "أمازون" in target_platform else scrape_noon(url)
-                if isinstance(data, list):
-                    report_data = analyze_reviews(data, target_platform)
-                    save_report_to_db(st.session_state.username, target_platform, url, str(report_data))
-                    status.update(label="✅ اكتملت المهمة!", state="complete")
+    if st.button("بدأ التحليل"):
+        with st.status("📡 جاري العمل...") as status:
+            data = scrape_amazon(url) if "أمازون" in target else scrape_noon(url)
+            if isinstance(data, list):
+                report = analyze_reviews(data, target)
+                save_report_to_db(st.session_state.username, target, url, str(report))
+                status.update(label="✅ اكتمل!", state="complete")
+                
+                if isinstance(report, dict):
+                    st.metric("مؤشر الجودة", f"{report.get('score', 0)}%")
+                    c1, c2 = st.columns(2)
+                    with c1: st.success("✅ المميزات"); [st.write(f"• {p}") for p in report.get("pros", [])]
+                    with c2: st.error("❌ العيوب"); [st.write(f"• {c}") for c in report.get("cons", [])]
                     
-                    if isinstance(report_data, dict):
-                        st.markdown('<h2 style="text-align: center; color: #f4c430;">📊 لوحة التحليل</h2>', unsafe_allow_html=True)
-                        score = report_data.get("score", 0)
-                        
-                        col1, col2, col3 = st.columns([1, 2, 1])
-                        with col2: st.metric(label="مؤشر الجودة", value=f"{score}%"); st.progress(score / 100.0)
-                        
-                        col_pros, col_cons = st.columns(2)
-                        with col_pros:
-                            st.success("✅ المميزات")
-                            # 🌟 الإصلاح الجذري لمشكلة الـ NULL هنا
-                            for p in report_data.get("pros", []): 
-                                st.write(f"• {p}")
-                        with col_cons:
-                            st.error("❌ العيوب")
-                            # 🌟 والإصلاح هنا أيضاً
-                            for c in report_data.get("cons", []): 
-                                st.write(f"• {c}")
-                                
-                        st.info("💡 نصيحة روفي")
-                        st.write(report_data.get("advice", ""))
-                        
-                        # زر تحميل الإكسل
-                        st.download_button(label="📊 تحميل كإكسل (CSV)", data=generate_csv_data(report_data), file_name="Rofi_Report.csv", mime="text/csv")
-                    else: st.write(report_data)
-                elif data == "No_Reviews": status.update(label="⚠️ عائق تقني", state="error"); st.warning("لم نجد تعليقات.")
-                else: status.update(label="❌ فشل الرادار", state="error"); st.error(data)
+                    # 🌟 إبراز رأي الخبير بشكل فخم
+                    st.info("⚖️ رأي الخبير الاستراتيجي")
+                    st.write(report.get("expert_opinion", report.get("advice", "لا يوجد تحليل إضافي")))
+                else: st.write(report)
+            else: status.update(label="❌ خطأ", state="error"); st.warning("لم نجد بيانات.")
 
 elif page == "📂 الأرشيف الفولاذي":
     st.markdown('<h1 class="main-title">📂 خزينتك السرية</h1>', unsafe_allow_html=True)
-    saved_reports = get_all_reports(st.session_state.username)
-    
-    if saved_reports:
-        # شريط بحث نظيف وبسيط
-        search_query = st.text_input("🔍 ابحث في أرشيفك:", placeholder="ابحث بالرابط...")
-        filtered = [r for r in saved_reports if search_query.lower() in r[1].lower() or search_query.lower() in r[0].lower()]
-        
-        for idx, (rep_platform, rep_url, rep_text, rep_date) in enumerate(filtered):
-            with st.expander(f"📅 {rep_date} | {rep_platform}"):
-                st.write(f"**الرابط:** {rep_url}")
+    reports = get_all_reports(st.session_state.username)
+    if reports:
+        for idx, (plat, r_url, r_text, r_date) in enumerate(reports):
+            with st.expander(f"📅 {r_date} | {plat}"):
+                st.write(f"**الرابط:** {r_url}")
                 try:
-                    report_data = ast.literal_eval(rep_text)
-                    if isinstance(report_data, dict):
-                        score = report_data.get("score", 0)
-                        st.metric("مؤشر الجودة", f"{score}%")
-                        
-                        col_p, col_c = st.columns(2)
-                        with col_p:
-                            st.success("✅ المميزات")
-                            for p in report_data.get("pros", []): st.write(f"• {p}")
-                        with col_c:
-                            st.error("❌ العيوب")
-                            for c in report_data.get("cons", []): st.write(f"• {c}")
-                        
-                        st.download_button("📊 تحميل كإكسل (CSV)", data=generate_csv_data(report_data), file_name=f"Rofi_{idx}.csv", key=f"csv_{idx}")
-                except: 
-                    # عرض التقرير القديم جداً (النصي) كما كان
-                    st.write(rep_text)
-    else: st.write("أرشيفك فارغ.")
+                    r_data = ast.literal_eval(r_text)
+                    if isinstance(r_data, dict):
+                        st.metric("الجودة", f"{r_data.get('score', 0)}%")
+                        c1, c2 = st.columns(2)
+                        with c1: [st.write(f"• {p}") for p in r_data.get("pros", [])]
+                        with c2: [st.write(f"• {c}") for c in r_data.get("cons", [])]
+                        # 🌟 إظهار رأي الخبير في الأرشيف أيضاً
+                        st.info("⚖️ رأي الخبير الاستراتيجي")
+                        st.write(r_data.get("expert_opinion", r_data.get("advice", "")))
+                except: st.write(r_text)
+    else: st.write("الأرشيف فارغ.")
