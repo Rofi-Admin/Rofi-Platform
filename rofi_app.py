@@ -6,9 +6,6 @@ import os
 import json
 import ast
 import hashlib
-import smtplib
-from email.mime.text import MIMEText
-import pandas as pd
 from playwright.sync_api import sync_playwright
 from google import genai
 
@@ -45,7 +42,7 @@ if sys.platform == 'win32':
 
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
 
-# ================= 🌟 4. قواعد البيانات والأمان =================
+# ================= 🌟 4. قواعد البيانات =================
 def hash_password(password): return hashlib.sha256(password.encode()).hexdigest()
 
 def init_db():
@@ -87,37 +84,21 @@ def save_report_to_db(username, platform, url, report):
 def get_all_reports(username):
     conn = sqlite3.connect('rofi_database.db')
     c = conn.cursor()
-    c.execute("SELECT platform, url, report, date FROM user_reports WHERE username=? ORDER BY date DESC", (username,))
+    # 🌟 الإصلاح: جلب التقارير الخاصة بك + التقارير القديمة التي لم يكن لها مستخدم
+    c.execute("SELECT platform, url, report, date FROM user_reports WHERE username=? OR username IS NULL ORDER BY date DESC", (username,))
     data = c.fetchall()
     conn.close()
     return data
 
 init_db()
 
-# ================= 🌟 5. محرك البريد وتوليد الإكسل =================
-def send_email_report(to_email, subject, body):
-    sender_email = st.secrets.get("SENDER_EMAIL", "")
-    sender_pass = st.secrets.get("EMAIL_PASSWORD", "")
-    if not sender_email or not sender_pass: return False, "لم يتم إعداد بريد المرسل في السحابة بعد."
-    try:
-        msg = MIMEText(body)
-        msg['Subject'] = subject
-        msg['From'] = "رادار روفي <" + sender_email + ">"
-        msg['To'] = to_email
-        server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
-        server.login(sender_email, sender_pass)
-        server.sendmail(sender_email, [to_email], msg.as_string())
-        server.quit()
-        return True, "تم إرسال التقرير بنجاح! 📧"
-    except Exception as e: return False, f"خطأ في الإرسال: {e}"
-
+# ================= 🌟 5. توليد الإكسل =================
 def generate_csv_data(report_data):
-    # إنشاء بيانات متوافقة مع إكسل باللغة العربية
     csv_content = "التصنيف,التفاصيل\n"
     for p in report_data.get("pros", []): csv_content += f"ميزة,{p.replace(',', ' ')}\n"
     for c in report_data.get("cons", []): csv_content += f"عيب,{c.replace(',', ' ')}\n"
     csv_content += f"نصيحة,{report_data.get('advice', '').replace(',', ' ')}\n"
-    return csv_content.encode('utf-8-sig') # ترميز sig ضروري ليقرأه إكسل بالعربية
+    return csv_content.encode('utf-8-sig') 
 
 # ================= 🌟 6. السحب والذكاء الاصطناعي =================
 def scrape_amazon(url):
@@ -167,7 +148,6 @@ def analyze_reviews(reviews_list, platform_name):
 # ================= 🌟 7. واجهة التطبيق =================
 if "authenticated" not in st.session_state: st.session_state.authenticated = False
 if "username" not in st.session_state: st.session_state.username = None
-if "user_email" not in st.session_state: st.session_state.user_email = None
 
 if not st.session_state.authenticated:
     st.markdown('<h1 class="main-title">🔐 بوابة منصة روفي</h1>', unsafe_allow_html=True)
@@ -180,7 +160,7 @@ if not st.session_state.authenticated:
             if st.button("دخول للمحرك"):
                 user_data = authenticate_user(log_id, log_pass)
                 if user_data:
-                    st.session_state.authenticated = True; st.session_state.username = user_data["username"]; st.session_state.user_email = user_data["email"]; st.rerun()
+                    st.session_state.authenticated = True; st.session_state.username = user_data["username"]; st.rerun()
                 else: st.error("❌ بيانات الدخول غير صحيحة")
         with tab2:
             reg_user = st.text_input("اختر اسم مستخدم:")
@@ -197,7 +177,7 @@ if not st.session_state.authenticated:
 st.sidebar.markdown(f"👤 مرحباً: **{st.session_state.username}**")
 if st.sidebar.button("خروج 🚪"): st.session_state.authenticated = False; st.rerun()
 st.sidebar.markdown("---")
-page = st.sidebar.radio("انتقل إلى:", ["🚀 محرك التحليل السحابي", "📊 خزينتك وإحصائياتك"])
+page = st.sidebar.radio("انتقل إلى:", ["🚀 محرك التحليل السحابي", "📂 الأرشيف الفولاذي"])
 
 if page == "🚀 محرك التحليل السحابي":
     st.markdown('<h1 class="main-title">🚀 محرك روفي للتحليل الذكي</h1>', unsafe_allow_html=True)
@@ -218,53 +198,38 @@ if page == "🚀 محرك التحليل السحابي":
                     if isinstance(report_data, dict):
                         st.markdown('<h2 style="text-align: center; color: #f4c430;">📊 لوحة التحليل</h2>', unsafe_allow_html=True)
                         score = report_data.get("score", 0)
-                        if score < 50: st.error(f"🚨 تحذير: منتج رديء ({score}%). تجنب الاستيراد!")
                         
                         col1, col2, col3 = st.columns([1, 2, 1])
                         with col2: st.metric(label="مؤشر الجودة", value=f"{score}%"); st.progress(score / 100.0)
                         
                         col_pros, col_cons = st.columns(2)
                         with col_pros:
-                            st.success("✅ المميزات"); [st.write(f"• {p}") for p in report_data.get("pros", [])]
+                            st.success("✅ المميزات")
+                            # 🌟 الإصلاح الجذري لمشكلة الـ NULL هنا
+                            for p in report_data.get("pros", []): 
+                                st.write(f"• {p}")
                         with col_cons:
-                            st.error("❌ العيوب"); [st.write(f"• {c}") for c in report_data.get("cons", [])]
-                        st.info("💡 نصيحة روفي"); st.write(report_data.get("advice", ""))
+                            st.error("❌ العيوب")
+                            # 🌟 والإصلاح هنا أيضاً
+                            for c in report_data.get("cons", []): 
+                                st.write(f"• {c}")
+                                
+                        st.info("💡 نصيحة روفي")
+                        st.write(report_data.get("advice", ""))
                         
-                        # 🌟 الزر الجديد لتصدير إكسل
-                        st.download_button(label="📊 تصدير البيانات كملف إكسل (CSV)", data=generate_csv_data(report_data), file_name="Rofi_Report.csv", mime="text/csv")
+                        # زر تحميل الإكسل
+                        st.download_button(label="📊 تحميل كإكسل (CSV)", data=generate_csv_data(report_data), file_name="Rofi_Report.csv", mime="text/csv")
                     else: st.write(report_data)
                 elif data == "No_Reviews": status.update(label="⚠️ عائق تقني", state="error"); st.warning("لم نجد تعليقات.")
                 else: status.update(label="❌ فشل الرادار", state="error"); st.error(data)
 
-elif page == "📊 خزينتك وإحصائياتك":
-    st.markdown('<h1 class="main-title">📊 لوحة التحكم والإحصائيات</h1>', unsafe_allow_html=True)
+elif page == "📂 الأرشيف الفولاذي":
+    st.markdown('<h1 class="main-title">📂 خزينتك السرية</h1>', unsafe_allow_html=True)
     saved_reports = get_all_reports(st.session_state.username)
     
     if saved_reports:
-        total_analyzed = len(saved_reports)
-        scores = []
-        dates = []
-        for rep in saved_reports:
-            try:
-                data = ast.literal_eval(rep[2])
-                if isinstance(data, dict): 
-                    scores.append(data.get("score", 0))
-                    dates.append(rep[3].split()[0]) # استخراج التاريخ فقط
-            except: pass
-        
-        avg_score = int(sum(scores)/len(scores)) if scores else 0
-        col_stat1, col_stat2 = st.columns(2)
-        col_stat1.metric("📦 منتجات قمت بتحليلها", f"{total_analyzed}")
-        col_stat2.metric("📈 متوسط جودة منتجاتك", f"{avg_score}%")
-        
-        # 🌟 الرسم البياني التفاعلي الجديد 🌟
-        if len(scores) > 1:
-            st.markdown("### 📉 مسار جودة المنتجات بمرور الوقت")
-            chart_df = pd.DataFrame({"مؤشر الجودة": scores[::-1]}, index=dates[::-1])
-            st.line_chart(chart_df, color="#f4c430")
-        
-        st.markdown("---")
-        search_query = st.text_input("🔍 ابحث في أرشيفك:", placeholder="ابحث بالرابط أو اسم المنصة...")
+        # شريط بحث نظيف وبسيط
+        search_query = st.text_input("🔍 ابحث في أرشيفك:", placeholder="ابحث بالرابط...")
         filtered = [r for r in saved_reports if search_query.lower() in r[1].lower() or search_query.lower() in r[0].lower()]
         
         for idx, (rep_platform, rep_url, rep_text, rep_date) in enumerate(filtered):
@@ -275,10 +240,17 @@ elif page == "📊 خزينتك وإحصائياتك":
                     if isinstance(report_data, dict):
                         score = report_data.get("score", 0)
                         st.metric("مؤشر الجودة", f"{score}%")
+                        
                         col_p, col_c = st.columns(2)
-                        with col_p: [st.write(f"• {p}") for p in report_data.get("pros", [])]
-                        with col_c: [st.write(f"• {c}") for c in report_data.get("cons", [])]
-                        # 🌟 التصدير لإكسل من الأرشيف
+                        with col_p:
+                            st.success("✅ المميزات")
+                            for p in report_data.get("pros", []): st.write(f"• {p}")
+                        with col_c:
+                            st.error("❌ العيوب")
+                            for c in report_data.get("cons", []): st.write(f"• {c}")
+                        
                         st.download_button("📊 تحميل كإكسل (CSV)", data=generate_csv_data(report_data), file_name=f"Rofi_{idx}.csv", key=f"csv_{idx}")
-                except: st.write(rep_text)
+                except: 
+                    # عرض التقرير القديم جداً (النصي) كما كان
+                    st.write(rep_text)
     else: st.write("أرشيفك فارغ.")
