@@ -51,21 +51,32 @@ def scrape_amazon(url):
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True) 
-            page = browser.new_page()
             
-            # الدخول للصفحة
+            # 🎭 1. التنكر البشري الكامل (إعطاء الروبوت هوية متصفح حقيقي)
+            context = browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                viewport={'width': 1280, 'height': 800},
+                extra_http_headers={"Accept-Language": "ar-SA,ar;q=0.9,en-US;q=0.8,en;q=0.7"}
+            )
+            page = context.new_page()
+            
             page.goto(url, timeout=60000, wait_until="domcontentloaded")
-            page.wait_for_timeout(3000) # انتظار 3 ثواني لتستقر الصفحة
+            page.wait_for_timeout(3000)
             
-            # 🌟 محاكاة النزول البشري البطيء (تكتيك نون) 🌟
+            # ⚔️ 2. الهجوم المضاد: إذا ظهر زر "تابع التسوق"، اجعل الروبوت يضغط عليه!
+            if page.locator("text='تابع التسوق'").count() > 0:
+                page.locator("text='تابع التسوق'").click()
+                page.wait_for_timeout(4000) # انتظار 4 ثوانٍ لفتح صفحة المنتج الحقيقية بعد الضغط
+                
+            # 3. النزول البطيء لتحميل التعليقات
             for _ in range(6):
                 page.keyboard.press("PageDown")
-                page.wait_for_timeout(1500) # انتظار ثانية ونصف بين كل نزلة لتحميل التعليقات
+                page.wait_for_timeout(1500)
             
-            # التقاط صورة جديدة للتأكد من مكان وقوف الروبوت
+            # 📸 التقاط صورة جديدة للتأكد من النتيجة
             page.screenshot(path="debug.png")
             
-            # سحب التعليقات
+            # 4. سحب التعليقات
             reviews = page.locator("span[data-hook='review-body']").all_inner_texts()
             browser.close()
             
