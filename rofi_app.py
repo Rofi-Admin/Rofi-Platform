@@ -4,89 +4,27 @@ import sys
 import sqlite3
 import os
 import json
+import ast
 from playwright.sync_api import sync_playwright
 from google import genai
 
-# 🌟 1. إعدادات الصفحة (يجب أن تكون في السطر الأول)
+# 🌟 1. إعدادات الصفحة
 st.set_page_config(page_title="منصة روفي للتحليل الذكي | Rofi", page_icon="🚀", layout="wide")
 
 # ================= 🌟 2. الثيم البصري (نسخة نظيفة وخفيفة) =================
 def apply_custom_theme():
     st.markdown("""
         <style>
-        /* الخلفية الزرقاء الداكنة */
-        .stApp {
-            background-color: #0c1a3c;
-            color: white;
-        }
-
-        /* القائمة الجانبية */
-        [data-testid="stSidebar"] {
-            background-color: #081228;
-            border-right: 2px solid #f4c430;
-        }
-        
-        /* تلوين نصوص القائمة الجانبية باللون الأبيض */
-        [data-testid="stSidebar"] * {
-            color: white !important;
-        }
-
-        /* العنوان الرئيسي */
-        .main-title {
-            text-align: center;
-            color: #f4c430;
-            font-size: 2.5rem;
-            font-weight: bold;
-            margin-bottom: 30px;
-        }
-
-        /* صندوق إدخال الرابط */
-        div[data-testid="stTextInput"] input {
-            background-color: #fff9e6 !important;
-            color: #000 !important;
-            border: 2px solid #f4c430 !important;
-            border-radius: 8px;
-            padding: 10px;
-            font-size: 1.1rem;
-        }
-        
-        /* تلوين عناوين الإدخال (اختر المنصة، الصق الرابط) باللون الأصفر */
-        div[data-testid="stTextInput"] label, div[data-testid="stRadio"] label p {
-            color: #f4c430 !important;
-            font-weight: bold;
-            font-size: 1.1rem;
-        }
-
-        /* الأزرار */
-        .stButton>button {
-            background-color: #f4c430;
-            color: #0c1a3c;
-            font-weight: bold;
-            border-radius: 8px;
-            border: none;
-            width: 100%;
-            transition: 0.3s;
-        }
-        .stButton>button:hover {
-            background-color: white;
-            color: #0c1a3c;
-        }
-
-        /* كروت التقارير الذكية */
-        .report-card {
-            background-color: white;
-            color: #333;
-            padding: 20px;
-            border-radius: 10px;
-            border-right: 5px solid #f4c430;
-            margin-top: 20px;
-            margin-bottom: 20px;
-        }
-        
-        /* ضبط نصوص التقارير لتكون داكنة وواضحة */
-        .report-card h1, .report-card h2, .report-card h3, .report-card p, .report-card li {
-            color: #333 !important;
-        }
+        .stApp { background-color: #0c1a3c; color: white; }
+        [data-testid="stSidebar"] { background-color: #081228; border-right: 2px solid #f4c430; }
+        [data-testid="stSidebar"] * { color: white !important; }
+        .main-title { text-align: center; color: #f4c430; font-size: 2.5rem; font-weight: bold; margin-bottom: 30px; }
+        div[data-testid="stTextInput"] input { background-color: #fff9e6 !important; color: #000 !important; border: 2px solid #f4c430 !important; border-radius: 8px; padding: 10px; font-size: 1.1rem; }
+        div[data-testid="stTextInput"] label, div[data-testid="stRadio"] label p { color: #f4c430 !important; font-weight: bold; font-size: 1.1rem; }
+        .stButton>button { background-color: #f4c430; color: #0c1a3c; font-weight: bold; border-radius: 8px; border: none; width: 100%; transition: 0.3s; }
+        .stButton>button:hover { background-color: white; color: #0c1a3c; }
+        .report-card { background-color: white; color: #333; padding: 20px; border-radius: 10px; border-right: 5px solid #f4c430; margin-top: 20px; margin-bottom: 20px; }
+        .report-card h1, .report-card h2, .report-card h3, .report-card p, .report-card li { color: #333 !important; }
         </style>
     """, unsafe_allow_html=True)
 
@@ -175,11 +113,10 @@ def scrape_noon(url):
             return "No_Reviews"
     except Exception as e: return f"Error: {e}"
 
+# --- محرك الذكاء الاصطناعي (محدث لـ JSON) ---
 def analyze_reviews(reviews_list, platform_name):
-    import json
     try:
         client = genai.Client(api_key=GEMINI_API_KEY)
-        # 🌟 ترقية احترافية: إجبار الذكاء الاصطناعي على الرد بصيغة برمجية للوحة التحكم
         prompt = f"""
         أنت خبير أسواق. حلل تعليقات هذا المنتج من منصة ({platform_name}).
         التعليقات: {' '.join(reviews_list)}
@@ -194,16 +131,12 @@ def analyze_reviews(reviews_list, platform_name):
         ملاحظة: score هو تقييم لجودة المنتج من 0 إلى 100 بناءً على التعليقات.
         """
         response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
-        
-        # تنظيف الرد لتحويله إلى بيانات تستطيع الواجهة رسمها
         raw_text = response.text.replace('```json', '').replace('```', '').strip()
         return json.loads(raw_text)
     except Exception as e: 
-        # إذا فشل التنسيق، يعود للتحليل النصي
-        return f"Error Formatting: {e} - Raw: {response.text}"
-# --- الواجهة الرئيسية ---
+        return f"Error Formatting: {e}"
 
-# وضع الشعار في القائمة الجانبية بشكل نظيف ومرة واحدة فقط
+# --- الواجهة الرئيسية ---
 if os.path.exists("logo.png"):
     st.sidebar.image("logo.png", width=120)
 else:
@@ -231,7 +164,7 @@ if page == "🚀 محرك التحليل السحابي":
     target_platform = st.radio("اختر المنصة المستهدفة:", ["أمازون السعودية 🔵", "نون السعودية 🟡"], horizontal=True)
     url = st.text_input(f"🔗 الصق رابط منتج {target_platform} هنا:")
     
-   if st.button("ابدأ تشغيل الرادار"):
+    if st.button("ابدأ تشغيل الرادار"):
         if not url:
             st.warning("⚠️ أرجوك، ضع رابطاً ليعمل المحرك!")
         else:
@@ -290,17 +223,49 @@ if page == "🚀 محرك التحليل السحابي":
                 else:
                     status.update(label="❌ فشل الرادار", state="error")
                     st.error(data)
+
 elif page == "📂 أرشيف التقارير":
-    st.markdown('<h1 class="main-title">📂 الأرشيف</h1>', unsafe_allow_html=True)
+    st.markdown('<h1 class="main-title">📂 أرشيف شركة نفطي الدائم</h1>', unsafe_allow_html=True)
     saved_reports = get_all_reports()
+    
     if saved_reports:
         for idx, (rep_platform, rep_url, rep_text, rep_date) in enumerate(saved_reports):
             with st.expander(f"📅 {rep_date} | {rep_platform}"):
                 st.write(f"**الرابط:** {rep_url}")
-                st.markdown(f'<div class="report-card">{rep_text}</div>', unsafe_allow_html=True)
+                
+                try:
+                    report_data = ast.literal_eval(rep_text)
+                    if isinstance(report_data, dict):
+                        score = report_data.get("score", 0)
+                        st.metric(label="مؤشر جودة المنتج", value=f"{score}%")
+                        
+                        col_pros, col_cons = st.columns(2)
+                        with col_pros:
+                            st.success("✅ أبرز المميزات")
+                            for p in report_data.get("pros", []): st.write(f"• {p}")
+                        with col_cons:
+                            st.error("❌ أبرز العيوب")
+                            for c in report_data.get("cons", []): st.write(f"• {c}")
+                            
+                        st.info("💡 نصيحة روفي")
+                        st.write(report_data.get("advice", ""))
+                        
+                        download_content = f"تقرير منصة روفي\nالمنصة: {rep_platform}\nالتاريخ: {rep_date}\nمؤشر الجودة: {score}%\n\nالمميزات:\n"
+                        download_content += "\n".join([f"- {p}" for p in report_data.get("pros", [])])
+                        download_content += "\n\nالعيوب:\n"
+                        download_content += "\n".join([f"- {c}" for c in report_data.get("cons", [])])
+                        download_content += f"\n\nالنصيحة:\n{report_data.get('advice', '')}"
+                        
+                        st.download_button(
+                            label="📥 تحميل التقرير (Text)",
+                            data=download_content,
+                            file_name=f"Rofi_Report_{idx}.txt",
+                            mime="text/plain"
+                        )
+                except:
+                    st.markdown(f'<div class="report-card">{rep_text}</div>', unsafe_allow_html=True)
     else:
         st.write("الأرشيف فارغ.")
 
-# الفوتر السري النظيف
 st.sidebar.markdown("---")
 st.sidebar.markdown('<p style="text-align: center; color: rgba(255,255,255,0.5);">منصة روفي © 2026</p>', unsafe_allow_html=True)
