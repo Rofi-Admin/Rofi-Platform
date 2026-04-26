@@ -3,6 +3,7 @@ import asyncio
 import sys
 import sqlite3
 import os
+import json
 from playwright.sync_api import sync_playwright
 from google import genai
 
@@ -177,9 +178,25 @@ def scrape_noon(url):
 def analyze_reviews(reviews_list, platform_name):
     try:
         client = genai.Client(api_key=GEMINI_API_KEY)
-        prompt = f"أنت خبير أسواق. حلل تعليقات منتج من منصة ({platform_name}) السعودية لاستخراج بذكاء: 1. العيوب 2. المميزات 3. نصيحة للتاجر للمنافسة (يفضل باللغة العربية الفصحى وبشكل نقاط واضحة): {' '.join(reviews_list)}"
+        # 🌟 ترقية احترافية: إجبار الذكاء الاصطناعي على الرد بصيغة JSON برمجية
+        prompt = f"""
+        أنت خبير أسواق. حلل تعليقات هذا المنتج من منصة ({platform_name}).
+        التعليقات: {' '.join(reviews_list)}
+        
+        أريدك أن ترد عليّ *فقط* بصيغة JSON صحيحة، بدون أي نصوص إضافية، بهذا الشكل بالضبط:
+        {{
+            "score": 85, 
+            "pros": ["ميزة 1", "ميزة 2"],
+            "cons": ["عيب 1", "عيب 2"],
+            "advice": "نصيحة استراتيجية للتاجر"
+        }}
+        ملاحظة: score هو تقييم لجودة المنتج من 0 إلى 100 بناءً على التعليقات.
+        """
         response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
-        return response.text
+        
+        # تنظيف الرد لتحويله إلى قاموس بايثون
+        raw_text = response.text.replace('```json', '').replace('```', '').strip()
+        return json.loads(raw_text)
     except Exception as e: return f"Error: {e}"
 
 # --- الواجهة الرئيسية ---
@@ -226,23 +243,58 @@ if page == "🚀 محرك التحليل السحابي":
                     data = scrape_noon(url)
                     
                 if isinstance(data, list):
-                    st.write(f"✅ نجح الاختراق وجاري قراءة التعليقات وتوليد الذكاء البشري المساعد...")
-                    report = analyze_reviews(data, target_platform)
-                    save_report_to_db(target_platform, url, report)
-                    status.update(label="✅ اكتملت المهمة! انظر للتقرير أدناه", state="complete")
-                    
-                    # عرض التقرير داخل بطاقة بيضاء واضحة ونظيفة
-                    st.markdown(f'<div class="report-card">{report}</div>', unsafe_allow_html=True)
-                    
-                elif data == "No_Reviews":
-                    status.update(label="⚠️ عائق تقني", state="error")
-                    st.warning("أمازون/نون أظهرت صفحة حماية. انظر للصورة أدناه لما واجهه الروبوت:")
-                    if os.path.exists("debug.png"):
-                        st.image("debug.png", caption="📸 لقطة حية")
-                else:
-                    status.update(label="❌ فشل الرادار", state="error")
-                    st.error(data)
+                        st.write(f"✅ نجح الاختراق وجاري قراءة التعليقات وتوليد الذكاء البشري المساعد...")
+                        # نغير اسم المتغير إلى report_data لأنه سيحتوي على معلومات مفصلة وليس مجرد نص
+                        report_data = analyze_reviews(data, target_platform)
+                        
+                        # حفظ التقرير في الأرشيف
+                        save_report_to_db(target_platform, url, str(report_data))
+                        status.update(label="✅ اكتملت المهمة! إليك لوحة التحليل", state="complete")
+                        
+                        # 🌟 لوحة التحكم الاحترافية (Dashboard) 🌟
+                        if isinstance(report_data, dict):
+                            st.markdown("---")
+                            st.markdown('<h2 style="text-align: center; color: #f4c430;">📊 لوحة التحليل الاستراتيجية</h2>', unsafe_allow_html=True)
+                            
+                            # 1. عرض مؤشر الجودة بشكل بصري
+                            score = report_data.get("score", 0)
+                            col1, col2, col3 = st.columns([1, 2, 1])
+                            with col2:
+                                st.metric(label="مؤشر جودة المنتج (AI Score)", value=f"{score}%")
+                                st.progress(score / 100.0)
+                            
+                            st.markdown("<br>", unsafe_allow_html=True)
+                            
+                            # 2. عرض المميزات والعيوب في أعمدة منفصلة ومنظمة
+                            col_pros, col_cons = st.columns(2)
+                            with col_pros:
+                                st.success("✅ أبرز المميزات")
+                                for p in report_data.get("pros", []):
+                                    st.write(f"• {p}")
+                                    
+                            with col_cons:
+                                st.error("❌ أبرز العيوب")
+                                for c in report_data.get("cons", []):
+                                    st.write(f"• {c}")
+                            
+                            st.markdown("<br>", unsafe_allow_html=True)
+                            
+                            # 3. عرض النصيحة الذهبية للتاجر
+                            st.info("💡 نصيحة روفي الاستراتيجية للمنافسة")
+                            st.write(report_data.get("advice", ""))
+                            
+                        else:
+                            # في حال فشل الذكاء الاصطناعي في التنسيق، يظهر كتقرير بسيط
+                            st.markdown(f'<div class="report-card">{report_data}</div>', unsafe_allow_html=True)
 
+                    elif data == "No_Reviews":
+                        status.update(label="⚠️ عائق تقني", state="error")
+                        st.warning("أمازون/نون أظهرت صفحة حماية. انظر للصورة أدناه لما واجهه الروبوت:")
+                        if os.path.exists("debug.png"):
+                            st.image("debug.png", caption="📸 لقطة استخباراتية حية")
+                    else:
+                        status.update(label="❌ فشل الرادار", state="error")
+                        st.error(data)
 elif page == "📂 أرشيف التقارير":
     st.markdown('<h1 class="main-title">📂 الأرشيف</h1>', unsafe_allow_html=True)
     saved_reports = get_all_reports()
