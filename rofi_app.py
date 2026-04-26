@@ -88,24 +88,37 @@ def scrape_amazon(url):
 def scrape_noon(url):
     try:
         with sync_playwright() as p:
-            # 🌟 3. غيرناه إلى True هنا أيضاً 🌟
             browser = p.chromium.launch(headless=True) 
+            
+            # 🎭 التنكر البشري الكامل (نفس القناع الذي خدع أمازون)
             context = browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-                viewport={'width': 1280, 'height': 800}
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                viewport={'width': 1280, 'height': 800},
+                extra_http_headers={"Accept-Language": "ar-SA,ar;q=0.9,en-US;q=0.8,en;q=0.7"}
             )
             page = context.new_page()
+            
+            # الدخول للرابط بحذر
             try:
                 page.goto(url, timeout=60000, wait_until="domcontentloaded")
             except Exception:
-                pass
-            page.wait_for_timeout(5000) 
+                pass 
+                
+            page.wait_for_timeout(5000) # انتظار استقرار الصفحة
+            
+            # 🐢 النزول البطيء (تكتيك الكيبورد لفتح التعليقات)
             for _ in range(8):
                 page.keyboard.press("PageDown") 
                 page.wait_for_timeout(1500)     
+            
+            # 📸 التقاط صورة استخباراتية لمعرفة ما واجهه الروبوت
+            page.screenshot(path="debug.png")
+            
+            # سحب كل النصوص
             raw_texts = page.locator("p, span").all_inner_texts()
             browser.close()
             
+            # الفلترة الذكية
             cleaned_reviews = []
             for text in raw_texts:
                 t = text.strip().replace('\n', ' ')
@@ -113,9 +126,11 @@ def scrape_noon(url):
                     cleaned_reviews.append(t)
             
             cleaned_reviews = list(set(cleaned_reviews))
+            
             if len(cleaned_reviews) > 0:
                 return cleaned_reviews
             return "No_Reviews"
+            
     except Exception as e: return f"Error: {e}"
 
 def analyze_reviews(reviews_list, platform_name):
