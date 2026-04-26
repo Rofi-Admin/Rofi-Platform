@@ -10,7 +10,7 @@ if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 # ================= الإعدادات السرية =================
-GEMINI_API_KEY = "AIzaSyD8TknsZxWKyQRk3VQ-3EuzkdpctAj-zTo"
+GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 ACCESS_PASSWORD = "Rofi2026"
 # ==================================================
 
