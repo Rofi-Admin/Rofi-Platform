@@ -12,7 +12,7 @@ from google import genai
 # 🌟 1. إعدادات الصفحة
 st.set_page_config(page_title="منصة روفي للتحليل الذكي | Rofi", page_icon="🚀", layout="wide")
 
-# ================= 🌟 2. الثيم البصري المحسن =================
+# ================= 🌟 2. الثيم البصري =================
 def apply_custom_theme():
     st.markdown("""
         <style>
@@ -84,7 +84,6 @@ def save_report_to_db(username, platform, url, report):
 def get_all_reports(username):
     conn = sqlite3.connect('rofi_database.db')
     c = conn.cursor()
-    # 🌟 استرجاع كافة التقارير (الخاصة بالمستخدم + القديمة التي لا تملك مستخدماً) لضمان عدم ضياع شيء
     c.execute("SELECT platform, url, report, date FROM user_reports WHERE username=? OR username IS NULL OR username='' ORDER BY date DESC", (username,))
     data = c.fetchall()
     conn.close()
@@ -92,7 +91,7 @@ def get_all_reports(username):
 
 init_db()
 
-# ================= 🌟 5. محرك السحب والذكاء الاصطناعي (محدث لـJSON دسم) =================
+# ================= 🌟 5. محرك السحب والذكاء الاصطناعي =================
 def scrape_amazon(url):
     try:
         with sync_playwright() as p:
@@ -126,14 +125,12 @@ def scrape_noon(url):
 def analyze_reviews(reviews_list, platform_name):
     try:
         client = genai.Client(api_key=GEMINI_API_KEY)
-        # 🌟 طلب تحليل "دسم" ومفصل لـ رأي الخبير
         prompt = f"""أنت خبير استراتيجي في الأسواق العالمية. حلل تعليقات منتج من ({platform_name}). 
         أريدك أن ترد بصيغة JSON حصراً تحتوي على:
         1. score: تقييم من 100.
         2. pros: قائمة بأبرز المميزات.
         3. cons: قائمة بأخطر العيوب.
         4. expert_opinion: تحليل استراتيجي مفصل وعميق جداً للتاجر (رأي الخبير) يشمل نصائح للمنافسة وتطوير المنتج.
-        
         التعليقات: {' '.join(reviews_list)}
         """
         response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
@@ -161,7 +158,7 @@ if not st.session_state.authenticated:
             reg_email = st.text_input("البريد:")
             reg_pass = st.text_input("كلمة مرور:")
             if st.button("تسجيل"):
-                if create_user(reg_user, reg_email, reg_pass): st.success("تم التسجيل!")
+                if create_user(reg_user, reg_email, reg_pass): st.success("تم التسجيل! سجل دخولك الآن.")
     st.stop()
 
 # --- القائمة الجانبية ---
@@ -185,15 +182,27 @@ if page == "🚀 محرك التحليل":
                 
                 if isinstance(report, dict):
                     st.metric("مؤشر الجودة", f"{report.get('score', 0)}%")
-                    c1, c2 = st.columns(2)
-                    with c1: st.success("✅ المميزات"); [st.write(f"• {p}") for p in report.get("pros", [])]
-                    with c2: st.error("❌ العيوب"); [st.write(f"• {c}") for c in report.get("cons", [])]
                     
-                    # 🌟 إبراز رأي الخبير بشكل فخم
+                    c1, c2 = st.columns(2)
+                    with c1: 
+                        st.success("✅ المميزات")
+                        # الطريقة الصحيحة الخالية من الأخطاء لعرض القوائم
+                        for p in report.get("pros", []):
+                            st.write(f"• {p}")
+                            
+                    with c2: 
+                        st.error("❌ العيوب")
+                        # الطريقة الصحيحة الخالية من الأخطاء لعرض القوائم
+                        for c in report.get("cons", []):
+                            st.write(f"• {c}")
+                    
                     st.info("⚖️ رأي الخبير الاستراتيجي")
                     st.write(report.get("expert_opinion", report.get("advice", "لا يوجد تحليل إضافي")))
-                else: st.write(report)
-            else: status.update(label="❌ خطأ", state="error"); st.warning("لم نجد بيانات.")
+                else: 
+                    st.write(report)
+            else: 
+                status.update(label="❌ خطأ", state="error")
+                st.warning("لم نجد بيانات.")
 
 elif page == "📂 الأرشيف الفولاذي":
     st.markdown('<h1 class="main-title">📂 خزينتك السرية</h1>', unsafe_allow_html=True)
@@ -205,12 +214,23 @@ elif page == "📂 الأرشيف الفولاذي":
                 try:
                     r_data = ast.literal_eval(r_text)
                     if isinstance(r_data, dict):
-                        st.metric("الجودة", f"{r_data.get('score', 0)}%")
+                        st.metric("مؤشر الجودة", f"{r_data.get('score', 0)}%")
+                        
                         c1, c2 = st.columns(2)
-                        with c1: [st.write(f"• {p}") for p in r_data.get("pros", [])]
-                        with c2: [st.write(f"• {c}") for c in r_data.get("cons", [])]
-                        # 🌟 إظهار رأي الخبير في الأرشيف أيضاً
+                        with c1: 
+                            st.success("✅ المميزات")
+                            for p in r_data.get("pros", []):
+                                st.write(f"• {p}")
+                        with c2: 
+                            st.error("❌ العيوب")
+                            for c in r_data.get("cons", []):
+                                st.write(f"• {c}")
+                                
                         st.info("⚖️ رأي الخبير الاستراتيجي")
                         st.write(r_data.get("expert_opinion", r_data.get("advice", "")))
-                except: st.write(r_text)
-    else: st.write("الأرشيف فارغ.")
+                    else:
+                        st.write(r_text) # للتقارير النصية القديمة جداً
+                except: 
+                    st.write(r_text) # في حالة فشل التحويل يعرض النص القديم
+    else: 
+        st.write("الأرشيف فارغ.")
