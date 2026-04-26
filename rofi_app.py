@@ -176,9 +176,10 @@ def scrape_noon(url):
     except Exception as e: return f"Error: {e}"
 
 def analyze_reviews(reviews_list, platform_name):
+    import json
     try:
         client = genai.Client(api_key=GEMINI_API_KEY)
-        # 🌟 ترقية احترافية: إجبار الذكاء الاصطناعي على الرد بصيغة JSON برمجية
+        # 🌟 ترقية احترافية: إجبار الذكاء الاصطناعي على الرد بصيغة برمجية للوحة التحكم
         prompt = f"""
         أنت خبير أسواق. حلل تعليقات هذا المنتج من منصة ({platform_name}).
         التعليقات: {' '.join(reviews_list)}
@@ -194,11 +195,12 @@ def analyze_reviews(reviews_list, platform_name):
         """
         response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
         
-        # تنظيف الرد لتحويله إلى قاموس بايثون
+        # تنظيف الرد لتحويله إلى بيانات تستطيع الواجهة رسمها
         raw_text = response.text.replace('```json', '').replace('```', '').strip()
         return json.loads(raw_text)
-    except Exception as e: return f"Error: {e}"
-
+    except Exception as e: 
+        # إذا فشل التنسيق، يعود للتحليل النصي
+        return f"Error Formatting: {e} - Raw: {response.text}"
 # --- الواجهة الرئيسية ---
 
 # وضع الشعار في القائمة الجانبية بشكل نظيف ومرة واحدة فقط
